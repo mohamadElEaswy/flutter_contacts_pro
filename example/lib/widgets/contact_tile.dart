@@ -11,40 +11,42 @@ class ContactTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final name = contact.displayName ?? contact.id;
+    final name = contactDisplayName(contact);
     final subtitle = contactSubtitle(contact);
     final color = avatarColorFor(contact.id, scheme);
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.15),
-        foregroundColor: color,
-        child: Text(
-          contactInitials(contact),
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+    return RepaintBoundary(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withValues(alpha: 0.15),
+          foregroundColor: color,
+          child: Text(
+            contactInitials(contact),
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
           ),
         ),
+        title: Text(
+          name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: subtitle == null
+            ? null
+            : Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+        trailing: contact.isFavorite
+            ? Icon(
+                Icons.star_rounded,
+                color: scheme.tertiary,
+                size: 20,
+              )
+            : null,
       ),
-      title: Text(
-        name,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: subtitle == null
-          ? null
-          : Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-      trailing: contact.isFavorite
-          ? Icon(
-              Icons.star_rounded,
-              color: scheme.tertiary,
-              size: 20,
-            )
-          : null,
     );
   }
 }
