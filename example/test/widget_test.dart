@@ -19,6 +19,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Loaded 2 contacts'), findsOneWidget);
+    expect(find.textContaining('Showing 2 of ~2'), findsOneWidget);
   });
 }

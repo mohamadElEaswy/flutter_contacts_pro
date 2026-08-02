@@ -19,15 +19,22 @@ class ContactsHomePage extends StatefulWidget {
 }
 
 class _ContactsHomePageState extends State<ContactsHomePage> {
+  static const _pageSize = 50;
+
   FakeContactsPlatform? _fake;
   late final FlutterContactsPro _api;
   late final bool _requestPermissionOnLoad;
+  final ScrollController _scrollController = ScrollController();
 
   ContactsLoadState _state = ContactsLoadState.loading;
-  List<Contact> _contacts = const [];
-  bool _hasMore = false;
+  final List<Contact> _contacts = [];
+  String? _nextPageToken;
+  int? _estimatedTotal;
+  bool _loadingMore = false;
   String? _error;
   PermissionStatus? _permissionStatus;
+
+  bool get _hasMore => _nextPageToken != null;
 
   @override
   void initState() {
@@ -43,23 +50,46 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
       _api = FlutterContactsPro(platform: _fake);
       _requestPermissionOnLoad = false;
     }
-    _load();
+    _scrollController.addListener(_onScroll);
+    _load(reset: true);
   }
 
   @override
   void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
     _fake?.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _state = ContactsLoadState.loading;
-      _error = null;
-    });
+  void _onScroll() {
+    if (!_hasMore || _loadingMore || _state != ContactsLoadState.ready) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 240) {
+      _load(reset: false);
+    }
+  }
+
+  Future<void> _load({required bool reset}) async {
+    if (!reset && (_loadingMore || !_hasMore)) return;
+
+    if (reset) {
+      setState(() {
+        _state = ContactsLoadState.loading;
+        _error = null;
+        _contacts.clear();
+        _nextPageToken = null;
+        _estimatedTotal = null;
+      });
+    } else {
+      setState(() => _loadingMore = true);
+    }
 
     try {
-      if (_requestPermissionOnLoad) {
+      if (reset && _requestPermissionOnLoad) {
         final status = await _api.requestPermission();
         if (status != PermissionStatus.granted &&
             status != PermissionStatus.limited) {
@@ -67,25 +97,39 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
           setState(() {
             _permissionStatus = status;
             _state = ContactsLoadState.permissionDenied;
+            _loadingMore = false;
           });
           return;
         }
       }
 
       final page = await _api.getContacts(
-        query: const ContactQuery(fields: ContactFields.list, pageSize: 20),
+        query: ContactQuery(
+          fields: ContactFields.list,
+          pageSize: _pageSize,
+          pageToken: reset ? null : _nextPageToken,
+        ),
       );
       if (!mounted) return;
       setState(() {
-        _contacts = page.contacts;
-        _hasMore = page.hasMore;
+        if (reset) {
+          _contacts
+            ..clear()
+            ..addAll(page.contacts);
+        } else {
+          _contacts.addAll(page.contacts);
+        }
+        _nextPageToken = page.nextPageToken;
+        _estimatedTotal = page.estimatedTotal ?? _estimatedTotal;
         _state = ContactsLoadState.ready;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.toString();
-        _state = ContactsLoadState.error;
+        _state = reset ? ContactsLoadState.error : ContactsLoadState.ready;
+        _loadingMore = false;
       });
     }
   }
@@ -94,6 +138,7 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: CustomScrollView(
+        controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverAppBar.large(
@@ -101,8 +146,9 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
             actions: [
               IconButton(
                 tooltip: 'Refresh',
-                onPressed:
-                    _state == ContactsLoadState.loading ? null : _load,
+                onPressed: _state == ContactsLoadState.loading
+                    ? null
+                    : () => _load(reset: true),
                 icon: const Icon(Icons.refresh_rounded),
               ),
               const SizedBox(width: 8),
@@ -113,8 +159,7 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Text(
-                  'Loaded ${_contacts.length} contacts'
-                  '${_hasMore ? ' · more available' : ''}',
+                  _subtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -125,6 +170,17 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
         ],
       ),
     );
+  }
+
+  String get _subtitle {
+    final total = _estimatedTotal;
+    final loaded = _contacts.length;
+    if (total != null) {
+      return 'Showing $loaded of ~$total'
+          '${_hasMore ? ' · scroll for more' : ''}';
+    }
+    return 'Loaded $loaded contacts'
+        '${_hasMore ? ' · scroll for more' : ''}';
   }
 
   List<Widget> _bodySlivers() {
@@ -160,7 +216,7 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
               title: 'Something went wrong',
               message: _error ?? 'Unknown error',
               actionLabel: 'Try again',
-              onAction: _load,
+              onAction: () => _load(reset: true),
             ),
           ),
         ];
@@ -179,7 +235,7 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
         }
         return [
           SliverPadding(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: 8),
             sliver: SliverList.separated(
               itemCount: _contacts.length,
               separatorBuilder: (_, _) =>
@@ -189,6 +245,25 @@ class _ContactsHomePageState extends State<ContactsHomePage> {
               },
             ),
           ),
+          if (_loadingMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator.adaptive()),
+              ),
+            )
+          else if (_hasMore)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                child: OutlinedButton(
+                  onPressed: () => _load(reset: false),
+                  child: const Text('Load more'),
+                ),
+              ),
+            )
+          else
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ];
     }
   }
