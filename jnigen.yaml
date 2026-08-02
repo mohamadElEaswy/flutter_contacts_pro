@@ -1,0 +1,32 @@
+android_sdk_config:
+  add_gradle_deps: true
+  android_example: 'example/'
+
+summarizer:
+  backend: asm
+
+output:
+  dart:
+    path: 'lib/src/android/bindings/contacts_android.g.dart'
+    structure: single_file
+
+preamble: |
+  // GENERATED CODE - DO NOT MODIFY BY HAND
+  // ignore_for_file: type=lint, unused_element, unused_field, unused_import
+
+classes:
+  - android.content.ContentResolver
+  - android.content.ContentValues
+  - android.content.ContentUris
+  - android.content.ContentProviderOperation
+  - android.content.Context
+  - android.content.Intent
+  - android.database.Cursor
+  - android.net.Uri
+  - android.provider.ContactsContract
+  - android.Manifest
+  - android.content.pm.PackageManager
+  - android.provider.Settings
+  - androidx.core.content.ContextCompat
+  - androidx.core.app.ActivityCompat
+  - java.io.InputStream
